@@ -14,7 +14,6 @@ import datetime;
 import json;
 import io;
 from time import sleep;
-from threading import Thread;
 from Crypto.Cipher import AES;
 from Crypto.Hash import SHA256;
 import hashlib;
@@ -103,6 +102,8 @@ class WhatsAppWebClient:
         "sharedSecret": None,
         "me": None
     };
+    magicNumber = 786;
+    messageNumber = 2;
 
     def __init__(self, onOpenCallback, onMessageCallback, onCloseCallback):
         self.onOpenCallback = onOpenCallback;
@@ -131,11 +132,18 @@ class WhatsAppWebClient:
             self.onCloseCallback["func"](self.onCloseCallback);
         eprint("WhatsApp backend Websocket closed.");
 
+    def keepAlive(self):
+        if self.activeWs is not None:
+            self.activeWs.send("?,,")
+            Timer(20.0, self.keepAlive).start()
+
     def onMessage(self, ws, message):
         try:
             messageSplit = message.split(",", 1);
             messageTag = messageSplit[0];
-            messageContent = messageSplit[1];
+            messageContent = ""
+            if len(messageSplit) >= 2:
+                messageContent = messageSplit[1];
             
             if messageTag in self.messageQueue:											# when the server responds to a client's message
                 pend = self.messageQueue[messageTag];
@@ -180,7 +188,6 @@ class WhatsAppWebClient:
                     if isinstance(jsonObj, list) and len(jsonObj) > 0:					# check if the result is an array
                         eprint(json.dumps(jsonObj));
                         if jsonObj[0] == "Conn":
-                            Timer(25, lambda: self.activeWs.send('?,,')).start() # Keepalive Request
                             self.connInfo["clientToken"] = jsonObj[1]["clientToken"];
                             self.connInfo["serverToken"] = jsonObj[1]["serverToken"];
                             self.connInfo["browserToken"] = jsonObj[1]["browserToken"];
@@ -208,17 +215,27 @@ class WhatsAppWebClient:
 
                             eprint("set connection info: client, server and browser token; secret, shared secret, enc key, mac key");
                             eprint("logged in as " + jsonObj[1]["pushname"]  + " (" + jsonObj[1]["wid"] + ")");
+
+                            # Start keepalive request loop
+                            Timer(20.0, self.keepAlive).start()
+                            # Start watching online statuses
+                            with open(os.path.dirname(__file__) + '/../config.json') as json_file:
+                                data = json.load(json_file)
+                                Timer(5.0, self.subscribePresences, [self.magicNumber, data['phoneNumbers']]).start()
                         elif jsonObj[0] == "Stream":
                             pass;
                         elif jsonObj[0] == "Props":
                             pass;
+                        elif jsonObj[0] == "Presence":
+                            self.onMessageCallback["func"](jsonObj, self.onMessageCallback, {"message_type": "presence"});
+                            eprint(jsonObj[1]["id"] + " is now " + jsonObj[1]["type"])
         except:
             eprint(traceback.format_exc());
 
 
 
     def connect(self):
-        self.activeWs = websocket.WebSocketApp("wss://w1.web.whatsapp.com/ws",
+        self.activeWs = websocket.WebSocketApp("wss://web.whatsapp.com/ws",
                                                on_message = lambda ws, message: self.onMessage(ws, message),
                                                on_error = lambda ws, error: self.onError(ws, error),
                                                on_open = lambda ws: self.onOpen(ws),
@@ -276,3 +293,18 @@ class WhatsAppWebClient:
         self.activeWs.send('goodbye,,["admin","Conn","disconnect"]');		# WhatsApp server closes connection automatically when client wants to disconnect
         #time.sleep(0.5);
         #self.activeWs.close();
+
+    """After 'subscribing' to a numbers presence WhatsApps backend will update you when they come online
+    :param magicNumber (int): number 000-999 that seems to be random generated and looks like it doesn't really matter
+    :param phoneNumber (string): phone number without leading zero's (e.g. 31612345678)
+    """
+    def subscribePresence(self, magicNumber, phoneNumber):
+        message = str(magicNumber) + '.' + '--' +  str(self.messageNumber) + ',,["action", "presence", "subscribe", "' + phoneNumber + '@c.us"]'
+        eprint(message);
+        self.messageNumber += 1
+        self.activeWs.send(message)
+
+    def subscribePresences(self, magicNumber, phoneNumbers):
+        for phoneNumber in phoneNumbers:
+            eprint(phoneNumber);
+            self.subscribePresence(magicNumber, phoneNumber)
