@@ -16,7 +16,7 @@ async function findAppModules(mods) {
 }
 
 (async () => {
-    const wantedModules = ['bgiachiigg', 'bfifcddbbg', 'bbcaggdbc'];
+    const wantedModules = ['cabeijgaif', 'bbbchjbggf', 'bbjghgfabf'];
     const unsortedModules = await findAppModules(wantedModules);
     if(unsortedModules.length !== wantedModules.length)
         throw "did not find all wanted modules";
