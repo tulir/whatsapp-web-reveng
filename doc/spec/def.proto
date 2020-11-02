@@ -320,7 +320,7 @@ message AppStateSyncKeyId {
 message AppStateSyncKeyFingerprint {
     optional uint32 rawId = 1;
     optional uint32 currentIndex = 2;
-    repeated packed uint32 deviceIndexes = 3;
+    repeated uint32 deviceIndexes = 3 [packed=true];
 }
 
 message AppStateSyncKeyData {
