@@ -4,6 +4,7 @@ const walk = require("acorn-walk");
 
 const objectToArray = obj => Object.keys(obj).map(k => [k, obj[k]]);
 const indent = (lines, n) => lines.map(l => " ".repeat(n) + l);
+const removeSuffix = (str, suffix) => str.endsWith(suffix) ? str.slice(0, -suffix.length) : str;
 
 async function findAppModules(mods) {
     const ua = { headers: { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:75.0) Gecko/20100101 Firefox/75.0" } }
@@ -16,7 +17,7 @@ async function findAppModules(mods) {
 }
 
 (async () => {
-    const wantedModules = ['bgiachiigg', 'bfifcddbbg', 'bbcaggdbc'];
+    const wantedModules = ['cabeijgaif', 'bbbchjbggf', 'bbjghgfabf'];
     const unsortedModules = await findAppModules(wantedModules);
     if(unsortedModules.length !== wantedModules.length)
         throw "did not find all wanted modules";
@@ -67,7 +68,7 @@ async function findAppModules(mods) {
                 }
             },
             VariableDeclarator(node) {
-                if(node.init && node.init.type === "CallExpression" && node.init.callee.type === "MemberExpression" && node.init.arguments.length === 1 && node.init.arguments[0].type === "ObjectExpression") {
+                if(node.init && node.init.type === "CallExpression" && node.init.callee.type === "CallExpression" && node.init.arguments.length === 1 && node.init.arguments[0].type === "ObjectExpression") {
                     enumAliases[node.id.name] = node.init.arguments[0].properties.map(p => ({ name: p.key.name, id: p.value.value }));
                 }
             }
@@ -78,7 +79,7 @@ async function findAppModules(mods) {
     for(const mod of modules) {
         let modInfo = modulesInfo[mod.key.name];
 
-        // message specifications are stored in a "_spec" attribute of the respective identifier alias
+        // message specifications are stored in a "internalSpec" attribute of the respective identifier alias
         walk.simple(mod, {
             AssignmentExpression(node) {
                 if(node.left.type === "MemberExpression" && node.left.property.name === "internalSpec" && node.right.type === "ObjectExpression") {
@@ -200,7 +201,7 @@ async function findAppModules(mods) {
                 if(completeFlags && info.flags.length == 0)
                     info.flags.push("optional");
                 let ret = info.enumValues ? stringifyEnum(info.type, info.enumValues) : [];
-                ret.push(`${info.flags.join(" ") + (info.flags.length == 0 ? "" : " ")}${info.type} ${info.name} = ${info.id};`);
+                ret.push(`${info.flags.join(" ") + (info.flags.length == 0 ? "" : " ")}${removeSuffix(info.type, 'Spec')} ${info.name} = ${info.id};`);
                 return ret;
             }
         };
@@ -208,12 +209,19 @@ async function findAppModules(mods) {
         // message specification stringifying function
         let stringifyMessageSpec = (name, members) =>
             [].concat(
-                [`message ${name} {`],
+                [`message ${removeSuffix(name, 'Spec')} {`],
                 indent([].concat(...members.map(m => stringifyMessageSpecMember(m))), spacesPerIndentLevel),
                 ["}", ""]
             );
 
-        let lines = [].concat(...objectToArray(modInfo.identifiers).map(i => i[1].members ? stringifyMessageSpec(i[0], i[1].members) : stringifyEnum(i[0], i[1].enumValues)));
+        let stringifyMissing = (name) => `message ${removeSuffix(name, 'Spec')} {}\n`
+
+        let lines = [].concat(...objectToArray(modInfo.identifiers)
+            .map(i => i[1].members
+                ? stringifyMessageSpec(i[0], i[1].members)
+                : i[1].enumValues
+                    ? stringifyEnum(i[0], i[1].enumValues)
+                    : stringifyMissing(i[0])));
         console.log(lines.join("\n"));
     }
     
